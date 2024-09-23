@@ -40,6 +40,7 @@ char dirtoc(int dir);
 int game_init();
 void game_tick();
 void game_grow();
+void game_gen_loot();
 
 ////// Global game state, initialized by game_init //////
 uint8_t direction = DIR_RIGHT;
@@ -50,12 +51,16 @@ uint16_t snake_sz; // len of the snake, also size of xpos and ypos
 uint16_t *xpos;
 uint16_t *ypos; // contains the coordinates of the snake itself
 
+uint16_t loot_x;
+uint16_t loot_y;
+
+uint16_t randn(uint16_t min, uint16_t max) {
+  return min + rand() / (RAND_MAX / (max - min + 1) + 1);
+}
+
 // ticks every reframe_speed_ms milliseconds,
 // so moves the snake.
-void timer_handler(int sig) {
-  game_tick();
-  game_grow();
-}
+void timer_handler(int sig) { game_tick(); }
 
 struct winsize w;
 void update_winsize() {
@@ -128,8 +133,8 @@ void fb_render() {
   // redrawn
   uint16_t x = xpos[snake_sz - 1];
   uint16_t y = ypos[snake_sz - 1];
-  printf("head [%u:%u] {%d:%d @ %u} dir=%c score=%u  ", x, y, w.ws_col,
-         w.ws_row, fb_size, dirtoc(direction), score);
+  printf("head [%u:%u] {%d:%d @ %u} loot=%u:%u dir=%c score=%u  ", x, y,
+         w.ws_col, w.ws_row, fb_size, loot_x, loot_y, dirtoc(direction), score);
 }
 
 uint8_t read_direction_key() {
@@ -149,12 +154,16 @@ uint8_t read_direction_key() {
 }
 
 int main() {
+  srand(time(NULL));
+
   if (game_init() == -1) {
     perror("game init failed");
     return -1;
   }
   fb_init();
   setup_keyboard();
+
+  game_gen_loot();
 
   setup_timer();
   game_tick(); // draw the first frame
@@ -236,6 +245,7 @@ char dirtoc(int dir) {
 
 int game_init() {
   update_winsize();
+
   direction = DIR_RIGHT;
   snake_sz = 7;
 
@@ -262,6 +272,14 @@ int game_init() {
   }
 
   return 0;
+}
+
+void game_gen_loot() {
+  // todo: do not generate an item on the snake itself
+  loot_x = randn(2, w.ws_col);
+  loot_y = randn(3, w.ws_row);
+  /* loot_x = 10; */
+  /* loot_y = 10; */
 }
 
 void game_move() {
@@ -299,10 +317,15 @@ void game_move() {
   }
   xpos[snake_sz - 1] = xx;
   ypos[snake_sz - 1] = yy;
+  if (xx == loot_x && yy == loot_y) {
+    game_gen_loot();
+    game_grow();
+  }
 }
 
 void game_grow() {
-  snake_sz += 1;
+  score++;
+  snake_sz++;
   xpos[snake_sz - 1] = xpos[snake_sz - 2];
   ypos[snake_sz - 1] = ypos[snake_sz - 2];
 }
@@ -322,5 +345,6 @@ void game_tick() {
 
   fb_empty();
   game_draw_snake();
+  fb_draw_point(loot_x, loot_y, '%');
   fb_render();
 }
