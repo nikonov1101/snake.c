@@ -21,7 +21,7 @@
 #define DIR_LEFT 4
 
 #define clear() printf("\033[H\033[J")
-// #define clear() printf("\n")
+/* #define clear() printf("\n") */
 
 /*
  * the following terminology is used:
@@ -32,58 +32,61 @@ char *fb;
 int fb_size; // updates by update_winsize;
 
 void fb_render();
-void fb_draw_point(int, int, char);
+void fb_draw_point(uint16_t, uint16_t, char);
 void setup_timer();
 void setup_keyboard();
 char dirtoc(int dir);
 
-void game_init();
+int game_init();
 void game_tick();
+void game_grow();
 
-////// Global game state, initialized by gam_init //////
+////// Global game state, initialized by game_init //////
 uint8_t direction = DIR_RIGHT;
 uint16_t score = 0;
 
-uint64_t reframe_speed_ms = 75;
-uint16_t snake_sz = 3; // len of the snake, also size of xpos and ypos
+uint64_t reframe_speed_ms = 72;
+uint16_t snake_sz; // len of the snake, also size of xpos and ypos
 uint16_t *xpos;
 uint16_t *ypos; // contains the coordinates of the snake itself
-// debug buffer
-char *debug_buf;
 
 // ticks every reframe_speed_ms milliseconds,
 // so moves the snake.
-void timer_handler(int sig) { game_tick(); }
+void timer_handler(int sig) {
+  game_tick();
+  game_grow();
+}
 
 struct winsize w;
 void update_winsize() {
   if (ioctl(0, TIOCGWINSZ, &w) < 0) {
     perror("handelr: failed to get win size\n");
   }
+  // -1 because of status bar
   fb_size = (w.ws_row - 1) * w.ws_col;
 }
 
-void fb_draw_point(int x, int y, char c) {
+void fb_draw_point(uint16_t x, uint16_t y, char c) {
   int pos = y * w.ws_col + x;
   fb[pos] = c;
 }
 
 // fb_add_frame adds a frame to a global buffer
 void fb_draw_frame() {
-  for (int col = 0; col < w.ws_col - 1; col++) {
+  for (uint16_t col = 0; col < w.ws_col - 1; col++) {
     fb_draw_point(col, 0, '=');
     fb_draw_point(col, w.ws_row - 2, '=');
   }
-  for (int row = 0; row < w.ws_row; row++) {
+  for (uint16_t row = 0; row < w.ws_row; row++) {
     fb_draw_point(0, row, '+');
     fb_draw_point(w.ws_col - 1, row, '+');
   }
 }
 
 void fb_empty() {
-  int pos = 0;
-  for (int row = 0; row < w.ws_row - 1; row++) {
-    for (int col = 0; col < w.ws_col; col++) {
+  uint16_t pos = 0;
+  for (uint16_t row = 0; row < w.ws_row - 1; row++) {
+    for (uint16_t col = 0; col < w.ws_col; col++) {
       pos = row * w.ws_col + col;
       fb[pos] = ' '; // fill buffer with space, start with blank screen
     }
@@ -96,25 +99,27 @@ void fb_empty() {
 // fb_init allocates a malloc-s buffer data,
 // fills it with empty characters,
 // and a frame around the screen.
-void fb_init() {
+int fb_init() {
   update_winsize();
   // allocate buffer for each char on a screen
   fb = (char *)malloc(sizeof(char) * fb_size);
-  bzero(fb, fb_size);
-  // also allocade buffer for debug output in the status-bar
-  debug_buf = (char *)malloc(sizeof(char) * 1025);
-  bzero(debug_buf, 1025);
+  if (fb == NULL) {
+    perror("fb: malloc failed\n");
+    return -1;
+  }
 
+  bzero(fb, sizeof(char) * fb_size);
   fb_empty();
+  return 0;
 }
 
 void fb_render() {
-  int pos = 0;
   clear();
-  for (int row = 0; row < w.ws_row - 1; row++) {
-    for (int col = 0; col < w.ws_col; col++) {
+  uint16_t pos = 0;
+  for (uint16_t row = 0; row < w.ws_row - 1; row++) {
+    for (uint16_t col = 0; col < w.ws_col; col++) {
       pos = row * w.ws_col + col;
-      printf("%c", (char)fb[pos]);
+      printf("%c", fb[pos]);
     }
     printf("\n");
   }
@@ -123,28 +128,31 @@ void fb_render() {
   // redrawn
   uint16_t x = xpos[snake_sz - 1];
   uint16_t y = ypos[snake_sz - 1];
-  printf("head [%u:%u] {%d:%d} dir=%c score=%u | %s", x, y, w.ws_col, w.ws_row,
-         dirtoc(direction), score, debug_buf);
+  printf("head [%u:%u] {%d:%d @ %u} dir=%c score=%u  ", x, y, w.ws_col,
+         w.ws_row, fb_size, dirtoc(direction), score);
 }
 
 uint8_t read_direction_key() {
   int userin = getchar();
   switch (userin) {
   case 'w':
-    return DIR_TOP; // top
+    return DIR_TOP;
   case 'a':
-    return DIR_LEFT; // left
+    return DIR_LEFT;
   case 's':
-    return DIR_DOWN; // down
+    return DIR_DOWN;
   case 'd':
-    return DIR_RIGHT; // right
+    return DIR_RIGHT;
   }
   // return the previous value
   return direction;
 }
 
 int main() {
-  game_init();
+  if (game_init() == -1) {
+    perror("game init failed");
+    return -1;
+  }
   fb_init();
   setup_keyboard();
 
@@ -168,14 +176,14 @@ void setup_timer() {
   sa.sa_handler = timer_handler;
   sigemptyset(&sa.sa_mask);
 
-  if (sigaction(SIGALRM, &sa, NULL) == -1) {
+  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
     perror("sigaction");
     exit(EXIT_FAILURE);
   }
 
-  // Set up the timer event to signal SIGALRM
+  // Set up the timer event to signal SIGUSR1
   sev.sigev_notify = SIGEV_SIGNAL;
-  sev.sigev_signo = SIGALRM;
+  sev.sigev_signo = SIGUSR1;
   sev.sigev_value.sival_ptr = &timerid;
 
   // Create the timer
@@ -226,14 +234,25 @@ char dirtoc(int dir) {
   return '?';
 }
 
-void game_init() {
+int game_init() {
+  update_winsize();
   direction = DIR_RIGHT;
-  snake_sz = 5;
+  snake_sz = 7;
 
   xpos = (uint16_t *)malloc(sizeof(uint16_t) * fb_size);
+  if (xpos == NULL) {
+    perror("xpos: malloc failed");
+    return -1;
+  }
+
   ypos = (uint16_t *)malloc(sizeof(uint16_t) * fb_size);
-  bzero(xpos, fb_size);
-  bzero(ypos, fb_size);
+  if (xpos == NULL) {
+    perror("ypos: malloc failed");
+    return -1;
+  }
+
+  bzero(xpos, sizeof(uint16_t) * fb_size);
+  bzero(ypos, sizeof(uint16_t) * fb_size);
 
   // set the initial position
   // FIXME: what's the canonical behavior? start at the center?
@@ -241,6 +260,8 @@ void game_init() {
     xpos[i] = 7 + i;
     ypos[i] = 5;
   }
+
+  return 0;
 }
 
 void game_move() {
@@ -280,9 +301,15 @@ void game_move() {
   ypos[snake_sz - 1] = yy;
 }
 
+void game_grow() {
+  snake_sz += 1;
+  xpos[snake_sz - 1] = xpos[snake_sz - 2];
+  ypos[snake_sz - 1] = ypos[snake_sz - 2];
+}
+
 void game_draw_snake() {
   // draw body
-  for (uint64_t i = 0; i < snake_sz; i++) {
+  for (uint16_t i = 0; i < snake_sz; i++) {
     fb_draw_point(xpos[i], ypos[i], '#');
   }
 
