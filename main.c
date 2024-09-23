@@ -23,7 +23,6 @@
 #define clear() printf("\033[H\033[J")
 // #define clear() printf("\n")
 
-
 /*
  * the following terminology is used:
  *  > *draw* adds items to a buffer in memory;
@@ -47,14 +46,14 @@ uint16_t score = 0;
 
 uint64_t reframe_speed_ms = 75;
 uint16_t snake_sz = 3; // len of the snake, also size of xpos and ypos
-uint16_t* xpos; 
-uint16_t* ypos; // contains the coordinates of the snake itself
+uint16_t *xpos;
+uint16_t *ypos; // contains the coordinates of the snake itself
 // debug buffer
-char* debug_buf;
+char *debug_buf;
 
-void timer_handler(int sig) {
-  game_tick();
-}
+// ticks every reframe_speed_ms milliseconds,
+// so moves the snake.
+void timer_handler(int sig) { game_tick(); }
 
 struct winsize w;
 void update_winsize() {
@@ -80,7 +79,6 @@ void fb_draw_frame() {
     fb_draw_point(w.ws_col - 1, row, '+');
   }
 }
-
 
 void fb_empty() {
   int pos = 0;
@@ -121,14 +119,15 @@ void fb_render() {
     printf("\n");
   }
   // we actually have a buffer one line smaller than a screen,
-  // let's use it as a status bar. No \r\n here because the screen will be fully redrawn
-  uint16_t x = xpos[snake_sz-1];
-  uint16_t y = ypos[snake_sz-1];
-  printf("head [%u:%u] {%d:%d} dir=%c score=%u | %s", x, y, w.ws_col, w.ws_row, dirtoc(direction), score,
-         debug_buf);
+  // let's use it as a status bar. No \r\n here because the screen will be fully
+  // redrawn
+  uint16_t x = xpos[snake_sz - 1];
+  uint16_t y = ypos[snake_sz - 1];
+  printf("head [%u:%u] {%d:%d} dir=%c score=%u | %s", x, y, w.ws_col, w.ws_row,
+         dirtoc(direction), score, debug_buf);
 }
 
-uint8_t read_dir_key_blocking() {
+uint8_t read_direction_key() {
   int userin = getchar();
   switch (userin) {
   case 'w':
@@ -154,7 +153,7 @@ int main() {
 
   for (;;) {
     // just update a direction, everything else is done by a timer
-    direction = read_dir_key_blocking();
+    direction = read_direction_key();
   }
 }
 
@@ -185,9 +184,9 @@ void setup_timer() {
     exit(EXIT_FAILURE);
   }
 
-  its.it_value.tv_sec = 0;          // Initial timer expiration
-  its.it_value.tv_nsec = reframe_speed_ms * 1000000; // 250ms
-  its.it_interval.tv_sec = 0;       // Subsequent intervals
+  its.it_value.tv_sec = 0;
+  its.it_value.tv_nsec = reframe_speed_ms * 1000000;
+  its.it_interval.tv_sec = 0;
   its.it_interval.tv_nsec = reframe_speed_ms * 1000000;
 
   // Start the timer
@@ -197,6 +196,9 @@ void setup_timer() {
   }
 }
 
+// switch terminal into a raw mode,
+// so keypresses are delivered immediately, without pressing ENTER
+// (I've chatGPTed this, sorry).
 void setup_keyboard() {
   struct termios term_io;
 
@@ -234,57 +236,58 @@ void game_init() {
   bzero(ypos, fb_size);
 
   // set the initial position
-  for (uint16_t i = 0; i<snake_sz; i++) {
-    xpos[i] = 7+i;
+  // FIXME: what's the canonical behavior? start at the center?
+  for (uint16_t i = 0; i < snake_sz; i++) {
+    xpos[i] = 7 + i;
     ypos[i] = 5;
   }
 }
 
 void game_move() {
-  // move snake one position forward 
-  for (uint16_t i = 0; i< snake_sz-1; i++) {
-    xpos[i] = xpos[i+1];
-    ypos[i] = ypos[i+1];
+  // move snake one position forward
+  for (uint16_t i = 0; i < snake_sz - 1; i++) {
+    xpos[i] = xpos[i + 1];
+    ypos[i] = ypos[i + 1];
   }
 
   // update latest {x,y} according to current direction
-  uint16_t xx = xpos[snake_sz-1];
-  uint16_t yy = ypos[snake_sz-1];
+  uint16_t xx = xpos[snake_sz - 1];
+  uint16_t yy = ypos[snake_sz - 1];
   switch (direction) {
-    case DIR_TOP: // top
-      if (yy-- == 1) {
-        // -2 because of border+status bar at the bottom
-        yy = w.ws_row - 3;
-      }
-      break;
-    case DIR_DOWN: // down
-      if (yy++ == w.ws_row - 3) {
-        yy = 1;
-      }
-      break;
-    case DIR_RIGHT: // right
-      if (xx++ == w.ws_col - 2) {
-        xx = 1;
-      }
-      break;
-    case DIR_LEFT: // left
-      if (xx-- == 1) {
-        xx = w.ws_col - 2;
-      }
-      break;
+  case DIR_TOP:
+    if (yy-- == 1) {
+      // -2 because of border+status bar at the bottom
+      yy = w.ws_row - 3;
     }
-  xpos[snake_sz-1] = xx;
-  ypos[snake_sz-1] = yy;
+    break;
+  case DIR_DOWN:
+    if (yy++ == w.ws_row - 3) {
+      yy = 1;
+    }
+    break;
+  case DIR_RIGHT:
+    if (xx++ == w.ws_col - 2) {
+      xx = 1;
+    }
+    break;
+  case DIR_LEFT:
+    if (xx-- == 1) {
+      xx = w.ws_col - 2;
+    }
+    break;
+  }
+  xpos[snake_sz - 1] = xx;
+  ypos[snake_sz - 1] = yy;
 }
 
 void game_draw_snake() {
   // draw body
-  for (uint64_t i=0; i<snake_sz; i++) {
-     fb_draw_point(xpos[i], ypos[i], '#');
+  for (uint64_t i = 0; i < snake_sz; i++) {
+    fb_draw_point(xpos[i], ypos[i], '#');
   }
 
   // draw head using another char
-  fb_draw_point(xpos[snake_sz-1], ypos[snake_sz-1], '@');
+  fb_draw_point(xpos[snake_sz - 1], ypos[snake_sz - 1], '@');
 }
 
 void game_tick() {
@@ -294,4 +297,3 @@ void game_tick() {
   game_draw_snake();
   fb_render();
 }
-
