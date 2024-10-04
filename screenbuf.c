@@ -12,7 +12,6 @@
 int screen_init(screen *s) {
   struct winsize w;
   if (ioctl(0, TIOCGWINSZ, &w) < 0) {
-    perror("handelr: failed to get win size\n");
     return -1;
   }
 
@@ -77,14 +76,4 @@ void screen_render(screen *s) {
     }
     printf("\n");
   }
-
-  // we actually have a buffer one line smaller than a screen,
-  // let's use it as a status bar. No \r\n here because the screen will be fully
-  // redrawn
-  // FIXME: this should be the part of the game
-  /* uint16_t x = xpos[snake_sz - 1]; */
-  /* uint16_t y = ypos[snake_sz - 1]; */
-  /* printf("head [%u:%u] {%d:%d @ %u} loot=%u:%u dir=%c score=%u  ", x, y, */
-  /*        w.ws_col, w.ws_row, fb_size, loot_x, loot_y, dirtoc(direction),
-   * score); */
 }
