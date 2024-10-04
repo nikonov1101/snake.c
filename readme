@@ -1,0 +1,8 @@
+snake.c
+=======
+
+Simple, text-based snake game for your Linux terminal.
+
+For about 15 years with computers, I've never write a game, so this is my first attempt.
+
+Plus, it's a great opportunity to learn C in a fun way.
